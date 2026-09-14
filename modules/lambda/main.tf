@@ -36,6 +36,11 @@ variable "env" {
   default = {}
 }
 
+variable "dynamodb_table_arn" {
+  type    = string
+  default = ""
+}
+
 variable "tags" {
   type    = map(string)
   default = {}
@@ -60,6 +65,33 @@ resource "aws_iam_role" "lambda_role" {
 resource "aws_iam_role_policy_attachment" "lambda_basic" {
   role       = aws_iam_role.lambda_role.name
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+data "aws_iam_policy_document" "dynamodb_access" {
+  count = var.dynamodb_table_arn != "" ? 1 : 0
+  statement {
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:DeleteItem",
+      "dynamodb:Query",
+      "dynamodb:Scan",
+      "dynamodb:BatchGetItem",
+      "dynamodb:BatchWriteItem",
+    ]
+    resources = [
+      var.dynamodb_table_arn,
+      "${var.dynamodb_table_arn}/index/*",
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "dynamodb_access" {
+  count  = var.dynamodb_table_arn != "" ? 1 : 0
+  name   = "${var.function_name}-dynamodb"
+  role   = aws_iam_role.lambda_role.id
+  policy = data.aws_iam_policy_document.dynamodb_access[0].json
 }
 
 resource "aws_lambda_function" "this" {
@@ -93,4 +125,8 @@ output "function_arn" {
 
 output "invoke_arn" {
   value = aws_lambda_function.this.invoke_arn
+}
+
+output "role_arn" {
+  value = aws_iam_role.lambda_role.arn
 }
