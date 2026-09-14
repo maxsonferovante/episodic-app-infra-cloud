@@ -1,0 +1,13 @@
+# Episodic App - Terraform Variables
+# Copy this to terraform.tfvars and fill in your values
+
+aws_region       = "sa-east-1"
+jwt_secret       = "your-random-secret-at-least-32-chars"
+google_client_id = "your-google-client-id.apps.googleusercontent.com"
+tmdb_api_key     = "your-tmdb-api-key"
+
+tags = {
+  Project   = "episodic"
+  ManagedBy = "terraform"
+  Env       = "production"
+}
