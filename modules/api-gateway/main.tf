@@ -27,6 +27,26 @@ variable "dashboard_lambda_invoke_arn" {
   type = string
 }
 
+variable "auth_lambda_function_name" {
+  type = string
+}
+
+variable "catalog_lambda_function_name" {
+  type = string
+}
+
+variable "library_lambda_function_name" {
+  type = string
+}
+
+variable "progress_lambda_function_name" {
+  type = string
+}
+
+variable "dashboard_lambda_function_name" {
+  type = string
+}
+
 resource "aws_api_gateway_rest_api" "this" {
   name        = var.api_name
   description = "Episodic App REST API"
@@ -50,6 +70,42 @@ resource "aws_api_gateway_resource" "v1" {
   path_part   = "v1"
 }
 
+# Lambda invoke permissions for API Gateway
+resource "aws_lambda_permission" "auth" {
+  action        = "lambda:InvokeFunction"
+  function_name = var.auth_lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.this.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "catalog" {
+  action        = "lambda:InvokeFunction"
+  function_name = var.catalog_lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.this.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "library" {
+  action        = "lambda:InvokeFunction"
+  function_name = var.library_lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.this.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "progress" {
+  action        = "lambda:InvokeFunction"
+  function_name = var.progress_lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.this.execution_arn}/*/*"
+}
+
+resource "aws_lambda_permission" "dashboard" {
+  action        = "lambda:InvokeFunction"
+  function_name = var.dashboard_lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.this.execution_arn}/*/*"
+}
+
 resource "aws_api_gateway_resource" "auth" {
   rest_api_id = aws_api_gateway_rest_api.this.id
   parent_id   = aws_api_gateway_resource.v1.id
@@ -62,20 +118,73 @@ resource "aws_api_gateway_resource" "auth_proxy" {
   path_part   = "{proxy+}"
 }
 
-resource "aws_api_gateway_method" "auth_proxy_any" {
+resource "aws_api_gateway_method" "auth_proxy_get" {
   rest_api_id   = aws_api_gateway_rest_api.this.id
   resource_id   = aws_api_gateway_resource.auth_proxy.id
-  http_method   = "ANY"
+  http_method   = "GET"
   authorization = "NONE"
 }
 
-resource "aws_api_gateway_integration" "auth_lambda" {
+resource "aws_api_gateway_method" "auth_proxy_post" {
+  rest_api_id   = aws_api_gateway_rest_api.this.id
+  resource_id   = aws_api_gateway_resource.auth_proxy.id
+  http_method   = "POST"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "auth_lambda_get" {
   rest_api_id             = aws_api_gateway_rest_api.this.id
   resource_id             = aws_api_gateway_resource.auth_proxy.id
-  http_method             = aws_api_gateway_method.auth_proxy_any.http_method
+  http_method             = aws_api_gateway_method.auth_proxy_get.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = var.auth_lambda_invoke_arn
+}
+
+resource "aws_api_gateway_integration" "auth_lambda_post" {
+  rest_api_id             = aws_api_gateway_rest_api.this.id
+  resource_id             = aws_api_gateway_resource.auth_proxy.id
+  http_method             = aws_api_gateway_method.auth_proxy_post.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.auth_lambda_invoke_arn
+}
+
+# OPTIONS for auth/{proxy+}
+resource "aws_api_gateway_method" "auth_proxy_options" {
+  rest_api_id   = aws_api_gateway_rest_api.this.id
+  resource_id   = aws_api_gateway_resource.auth_proxy.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "auth_proxy_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.auth_proxy.id
+  http_method = aws_api_gateway_method.auth_proxy_options.http_method
+  type        = "MOCK"
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+}
+
+resource "aws_api_gateway_method_response" "auth_proxy_options_200" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.auth_proxy.id
+  http_method = aws_api_gateway_method.auth_proxy_options.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+  response_models = { "application/json" = "Empty" }
+}
+
+resource "aws_api_gateway_integration_response" "auth_proxy_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.auth_proxy.id
+  http_method = aws_api_gateway_method.auth_proxy_options.http_method
+  status_code = aws_api_gateway_method_response.auth_proxy_options_200.status_code
+  response_parameters = local.cors_headers
 }
 
 resource "aws_api_gateway_resource" "series" {
@@ -90,20 +199,57 @@ resource "aws_api_gateway_resource" "series_proxy" {
   path_part   = "{proxy+}"
 }
 
-resource "aws_api_gateway_method" "series_proxy_any" {
+resource "aws_api_gateway_method" "series_proxy_get" {
   rest_api_id   = aws_api_gateway_rest_api.this.id
   resource_id   = aws_api_gateway_resource.series_proxy.id
-  http_method   = "ANY"
+  http_method   = "GET"
   authorization = "NONE"
 }
 
-resource "aws_api_gateway_integration" "catalog_lambda" {
+resource "aws_api_gateway_integration" "catalog_lambda_get" {
   rest_api_id             = aws_api_gateway_rest_api.this.id
   resource_id             = aws_api_gateway_resource.series_proxy.id
-  http_method             = aws_api_gateway_method.series_proxy_any.http_method
+  http_method             = aws_api_gateway_method.series_proxy_get.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = var.catalog_lambda_invoke_arn
+}
+
+# OPTIONS for series/{proxy+}
+resource "aws_api_gateway_method" "series_proxy_options" {
+  rest_api_id   = aws_api_gateway_rest_api.this.id
+  resource_id   = aws_api_gateway_resource.series_proxy.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "series_proxy_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.series_proxy.id
+  http_method = aws_api_gateway_method.series_proxy_options.http_method
+  type        = "MOCK"
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+}
+
+resource "aws_api_gateway_method_response" "series_proxy_options_200" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.series_proxy.id
+  http_method = aws_api_gateway_method.series_proxy_options.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+  response_models = { "application/json" = "Empty" }
+}
+
+resource "aws_api_gateway_integration_response" "series_proxy_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.series_proxy.id
+  http_method = aws_api_gateway_method.series_proxy_options.http_method
+  status_code = aws_api_gateway_method_response.series_proxy_options_200.status_code
+  response_parameters = local.cors_headers
 }
 
 resource "aws_api_gateway_resource" "library" {
@@ -134,20 +280,89 @@ resource "aws_api_gateway_integration" "library_root_lambda" {
   uri                     = var.library_lambda_invoke_arn
 }
 
-resource "aws_api_gateway_method" "library_proxy_any" {
+resource "aws_api_gateway_method" "library_proxy_get" {
   rest_api_id   = aws_api_gateway_rest_api.this.id
   resource_id   = aws_api_gateway_resource.library_proxy.id
-  http_method   = "ANY"
+  http_method   = "GET"
   authorization = "NONE"
 }
 
-resource "aws_api_gateway_integration" "library_lambda" {
+resource "aws_api_gateway_method" "library_proxy_put" {
+  rest_api_id   = aws_api_gateway_rest_api.this.id
+  resource_id   = aws_api_gateway_resource.library_proxy.id
+  http_method   = "PUT"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_method" "library_proxy_delete" {
+  rest_api_id   = aws_api_gateway_rest_api.this.id
+  resource_id   = aws_api_gateway_resource.library_proxy.id
+  http_method   = "DELETE"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "library_lambda_get" {
   rest_api_id             = aws_api_gateway_rest_api.this.id
   resource_id             = aws_api_gateway_resource.library_proxy.id
-  http_method             = aws_api_gateway_method.library_proxy_any.http_method
+  http_method             = aws_api_gateway_method.library_proxy_get.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = var.library_lambda_invoke_arn
+}
+
+resource "aws_api_gateway_integration" "library_lambda_put" {
+  rest_api_id             = aws_api_gateway_rest_api.this.id
+  resource_id             = aws_api_gateway_resource.library_proxy.id
+  http_method             = aws_api_gateway_method.library_proxy_put.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.library_lambda_invoke_arn
+}
+
+resource "aws_api_gateway_integration" "library_lambda_delete" {
+  rest_api_id             = aws_api_gateway_rest_api.this.id
+  resource_id             = aws_api_gateway_resource.library_proxy.id
+  http_method             = aws_api_gateway_method.library_proxy_delete.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.library_lambda_invoke_arn
+}
+
+# OPTIONS for library/{proxy+}
+resource "aws_api_gateway_method" "library_proxy_options" {
+  rest_api_id   = aws_api_gateway_rest_api.this.id
+  resource_id   = aws_api_gateway_resource.library_proxy.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "library_proxy_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.library_proxy.id
+  http_method = aws_api_gateway_method.library_proxy_options.http_method
+  type        = "MOCK"
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+}
+
+resource "aws_api_gateway_method_response" "library_proxy_options_200" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.library_proxy.id
+  http_method = aws_api_gateway_method.library_proxy_options.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+  response_models = { "application/json" = "Empty" }
+}
+
+resource "aws_api_gateway_integration_response" "library_proxy_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.library_proxy.id
+  http_method = aws_api_gateway_method.library_proxy_options.http_method
+  status_code = aws_api_gateway_method_response.library_proxy_options_200.status_code
+  response_parameters = local.cors_headers
 }
 
 resource "aws_api_gateway_resource" "episodes" {
@@ -162,20 +377,73 @@ resource "aws_api_gateway_resource" "episodes_proxy" {
   path_part   = "{proxy+}"
 }
 
-resource "aws_api_gateway_method" "episodes_proxy_any" {
+resource "aws_api_gateway_method" "episodes_proxy_get" {
   rest_api_id   = aws_api_gateway_rest_api.this.id
   resource_id   = aws_api_gateway_resource.episodes_proxy.id
-  http_method   = "ANY"
+  http_method   = "GET"
   authorization = "NONE"
 }
 
-resource "aws_api_gateway_integration" "progress_lambda" {
+resource "aws_api_gateway_method" "episodes_proxy_put" {
+  rest_api_id   = aws_api_gateway_rest_api.this.id
+  resource_id   = aws_api_gateway_resource.episodes_proxy.id
+  http_method   = "PUT"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "progress_lambda_get" {
   rest_api_id             = aws_api_gateway_rest_api.this.id
   resource_id             = aws_api_gateway_resource.episodes_proxy.id
-  http_method             = aws_api_gateway_method.episodes_proxy_any.http_method
+  http_method             = aws_api_gateway_method.episodes_proxy_get.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = var.progress_lambda_invoke_arn
+}
+
+resource "aws_api_gateway_integration" "progress_lambda_put" {
+  rest_api_id             = aws_api_gateway_rest_api.this.id
+  resource_id             = aws_api_gateway_resource.episodes_proxy.id
+  http_method             = aws_api_gateway_method.episodes_proxy_put.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = var.progress_lambda_invoke_arn
+}
+
+# OPTIONS for episodes/{proxy+}
+resource "aws_api_gateway_method" "episodes_proxy_options" {
+  rest_api_id   = aws_api_gateway_rest_api.this.id
+  resource_id   = aws_api_gateway_resource.episodes_proxy.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "episodes_proxy_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.episodes_proxy.id
+  http_method = aws_api_gateway_method.episodes_proxy_options.http_method
+  type        = "MOCK"
+  request_templates = { "application/json" = "{\"statusCode\": 200}" }
+}
+
+resource "aws_api_gateway_method_response" "episodes_proxy_options_200" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.episodes_proxy.id
+  http_method = aws_api_gateway_method.episodes_proxy_options.http_method
+  status_code = "200"
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+  response_models = { "application/json" = "Empty" }
+}
+
+resource "aws_api_gateway_integration_response" "episodes_proxy_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.episodes_proxy.id
+  http_method = aws_api_gateway_method.episodes_proxy_options.http_method
+  status_code = aws_api_gateway_method_response.episodes_proxy_options_200.status_code
+  response_parameters = local.cors_headers
 }
 
 resource "aws_api_gateway_resource" "dashboard" {
@@ -244,18 +512,357 @@ resource "aws_api_gateway_integration" "calendar_lambda" {
   uri                     = var.dashboard_lambda_invoke_arn
 }
 
+# CORS - OPTIONS mock integrations
+locals {
+  cors_headers = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,Authorization'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,POST,PUT,DELETE,OPTIONS'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+}
+
+# Auth OPTIONS
+resource "aws_api_gateway_method" "auth_options" {
+  rest_api_id   = aws_api_gateway_rest_api.this.id
+  resource_id   = aws_api_gateway_resource.auth.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "auth_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.auth.id
+  http_method = aws_api_gateway_method.auth_options.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "auth_options_200" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.auth.id
+  http_method = aws_api_gateway_method.auth_options.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "auth_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.auth.id
+  http_method = aws_api_gateway_method.auth_options.http_method
+  status_code = aws_api_gateway_method_response.auth_options_200.status_code
+
+  response_parameters = local.cors_headers
+}
+
+# Catalog OPTIONS
+resource "aws_api_gateway_method" "catalog_options" {
+  rest_api_id   = aws_api_gateway_rest_api.this.id
+  resource_id   = aws_api_gateway_resource.series.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "catalog_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.series.id
+  http_method = aws_api_gateway_method.catalog_options.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "catalog_options_200" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.series.id
+  http_method = aws_api_gateway_method.catalog_options.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "catalog_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.series.id
+  http_method = aws_api_gateway_method.catalog_options.http_method
+  status_code = aws_api_gateway_method_response.catalog_options_200.status_code
+
+  response_parameters = local.cors_headers
+}
+
+# Library OPTIONS
+resource "aws_api_gateway_method" "library_options" {
+  rest_api_id   = aws_api_gateway_rest_api.this.id
+  resource_id   = aws_api_gateway_resource.library.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "library_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.library.id
+  http_method = aws_api_gateway_method.library_options.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "library_options_200" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.library.id
+  http_method = aws_api_gateway_method.library_options.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "library_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.library.id
+  http_method = aws_api_gateway_method.library_options.http_method
+  status_code = aws_api_gateway_method_response.library_options_200.status_code
+
+  response_parameters = local.cors_headers
+}
+
+# Episodes OPTIONS
+resource "aws_api_gateway_method" "episodes_options" {
+  rest_api_id   = aws_api_gateway_rest_api.this.id
+  resource_id   = aws_api_gateway_resource.episodes.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "episodes_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.episodes.id
+  http_method = aws_api_gateway_method.episodes_options.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "episodes_options_200" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.episodes.id
+  http_method = aws_api_gateway_method.episodes_options.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "episodes_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.episodes.id
+  http_method = aws_api_gateway_method.episodes_options.http_method
+  status_code = aws_api_gateway_method_response.episodes_options_200.status_code
+
+  response_parameters = local.cors_headers
+}
+
+# Dashboard OPTIONS
+resource "aws_api_gateway_method" "dashboard_options" {
+  rest_api_id   = aws_api_gateway_rest_api.this.id
+  resource_id   = aws_api_gateway_resource.dashboard.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "dashboard_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.dashboard.id
+  http_method = aws_api_gateway_method.dashboard_options.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "dashboard_options_200" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.dashboard.id
+  http_method = aws_api_gateway_method.dashboard_options.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "dashboard_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.dashboard.id
+  http_method = aws_api_gateway_method.dashboard_options.http_method
+  status_code = aws_api_gateway_method_response.dashboard_options_200.status_code
+
+  response_parameters = local.cors_headers
+}
+
+# History OPTIONS
+resource "aws_api_gateway_method" "history_options" {
+  rest_api_id   = aws_api_gateway_rest_api.this.id
+  resource_id   = aws_api_gateway_resource.history.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "history_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.history.id
+  http_method = aws_api_gateway_method.history_options.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "history_options_200" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.history.id
+  http_method = aws_api_gateway_method.history_options.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "history_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.history.id
+  http_method = aws_api_gateway_method.history_options.http_method
+  status_code = aws_api_gateway_method_response.history_options_200.status_code
+
+  response_parameters = local.cors_headers
+}
+
+# Calendar OPTIONS
+resource "aws_api_gateway_method" "calendar_options" {
+  rest_api_id   = aws_api_gateway_rest_api.this.id
+  resource_id   = aws_api_gateway_resource.calendar.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "calendar_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.calendar.id
+  http_method = aws_api_gateway_method.calendar_options.http_method
+  type        = "MOCK"
+
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "calendar_options_200" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.calendar.id
+  http_method = aws_api_gateway_method.calendar_options.http_method
+  status_code = "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true
+    "method.response.header.Access-Control-Allow-Methods" = true
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+
+  response_models = {
+    "application/json" = "Empty"
+  }
+}
+
+resource "aws_api_gateway_integration_response" "calendar_options" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  resource_id = aws_api_gateway_resource.calendar.id
+  http_method = aws_api_gateway_method.calendar_options.http_method
+  status_code = aws_api_gateway_method_response.calendar_options_200.status_code
+
+  response_parameters = local.cors_headers
+}
+
 resource "aws_api_gateway_deployment" "this" {
   rest_api_id = aws_api_gateway_rest_api.this.id
 
   depends_on = [
-    aws_api_gateway_integration.auth_lambda,
-    aws_api_gateway_integration.catalog_lambda,
-    aws_api_gateway_integration.library_lambda,
+    aws_api_gateway_integration.auth_lambda_get,
+    aws_api_gateway_integration.auth_lambda_post,
+    aws_api_gateway_integration.catalog_lambda_get,
     aws_api_gateway_integration.library_root_lambda,
-    aws_api_gateway_integration.progress_lambda,
+    aws_api_gateway_integration.library_lambda_get,
+    aws_api_gateway_integration.library_lambda_put,
+    aws_api_gateway_integration.library_lambda_delete,
+    aws_api_gateway_integration.progress_lambda_get,
+    aws_api_gateway_integration.progress_lambda_put,
     aws_api_gateway_integration.dashboard_lambda,
     aws_api_gateway_integration.history_lambda,
     aws_api_gateway_integration.calendar_lambda,
+    aws_api_gateway_integration.auth_options,
+    aws_api_gateway_integration.catalog_options,
+    aws_api_gateway_integration.library_options,
+    aws_api_gateway_integration.episodes_options,
+    aws_api_gateway_integration.dashboard_options,
+    aws_api_gateway_integration.history_options,
+    aws_api_gateway_integration.calendar_options,
+    aws_api_gateway_integration.auth_proxy_options,
+    aws_api_gateway_integration.series_proxy_options,
+    aws_api_gateway_integration.library_proxy_options,
+    aws_api_gateway_integration.episodes_proxy_options,
   ]
 
   triggers = {
