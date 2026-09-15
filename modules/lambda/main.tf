@@ -13,7 +13,7 @@ variable "handler" {
 
 variable "runtime" {
   type    = string
-  default = "provided.al2"
+  default = "provided.al2023"
 }
 
 variable "architectures" {
