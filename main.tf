@@ -46,6 +46,7 @@ locals {
       env = {
         TMDB_API_KEY      = var.tmdb_api_key
         DYNAMODB_TABLE_NAME = module.dynamodb.table_name
+        JWT_SECRET          = var.jwt_secret
         AWS_LAMBDA_HTTP_IGNORE_STAGE_IN_PATH = "1"
       }
     }
