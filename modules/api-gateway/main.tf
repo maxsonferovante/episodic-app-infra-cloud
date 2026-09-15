@@ -7,6 +7,18 @@ variable "tags" {
   default = {}
 }
 
+variable "throttle_rate_limit" {
+  description = "Steady-state request rate for the whole API, in requests per second (60/min = 1)."
+  type        = number
+  default     = 1
+}
+
+variable "throttle_burst_limit" {
+  description = "Maximum burst of requests allowed above the steady-state rate."
+  type        = number
+  default     = 20
+}
+
 variable "auth_lambda_invoke_arn" {
   type = string
 }
@@ -879,6 +891,20 @@ resource "aws_api_gateway_stage" "this" {
   rest_api_id   = aws_api_gateway_rest_api.this.id
   stage_name    = "prod"
   tags          = var.tags
+}
+
+# Stage-wide rate limit applied to every method (the request asked for 60
+# requests per minute = 1 req/s, with a burst allowance for the app's parallel
+# season/episode fetches). Requests over the limit get 429 Too Many Requests.
+resource "aws_api_gateway_method_settings" "throttle" {
+  rest_api_id = aws_api_gateway_rest_api.this.id
+  stage_name  = aws_api_gateway_stage.this.stage_name
+  method_path = "*/*"
+
+  settings {
+    throttling_rate_limit  = var.throttle_rate_limit
+    throttling_burst_limit = var.throttle_burst_limit
+  }
 }
 
 output "api_id" {
