@@ -4,3 +4,7 @@
 .terraform/
 .terraform.lock.hcl
 terraform.tfvars
+
+# Terraform plan output
+tfplan.bin
+*.tfplan

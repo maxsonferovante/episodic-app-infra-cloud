@@ -19,7 +19,15 @@ variable "throttle_burst_limit" {
   default     = 20
 }
 
-variable "auth_lambda_invoke_arn" {
+variable "google_auth_lambda_invoke_arn" {
+  type = string
+}
+
+variable "authorizer_lambda_invoke_arn" {
+  type = string
+}
+
+variable "authorizer_lambda_function_name" {
   type = string
 }
 
@@ -39,7 +47,7 @@ variable "dashboard_lambda_invoke_arn" {
   type = string
 }
 
-variable "auth_lambda_function_name" {
+variable "google_auth_lambda_function_name" {
   type = string
 }
 
@@ -85,7 +93,7 @@ resource "aws_api_gateway_resource" "v1" {
 # Lambda invoke permissions for API Gateway
 resource "aws_lambda_permission" "auth" {
   action        = "lambda:InvokeFunction"
-  function_name = var.auth_lambda_function_name
+  function_name = var.google_auth_lambda_function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.this.execution_arn}/*/*"
 }
@@ -116,6 +124,27 @@ resource "aws_lambda_permission" "dashboard" {
   function_name = var.dashboard_lambda_function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_api_gateway_rest_api.this.execution_arn}/*/*"
+}
+
+# ---------- JWT authorizer ----------
+# Every route except the auth endpoints and CORS preflights requires a valid
+# HS256 access token; the authorizer validates it and returns an Allow policy
+# carrying the user id before the backend Lambda is invoked.
+
+resource "aws_api_gateway_authorizer" "this" {
+  name                             = "episodic-jwt-authorizer"
+  rest_api_id                      = aws_api_gateway_rest_api.this.id
+  type                             = "TOKEN"
+  identity_source                  = "method.request.header.Authorization"
+  authorizer_uri                   = var.authorizer_lambda_invoke_arn
+  authorizer_result_ttl_in_seconds = 300
+}
+
+resource "aws_lambda_permission" "authorizer" {
+  action        = "lambda:InvokeFunction"
+  function_name = var.authorizer_lambda_function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.this.execution_arn}/authorizers/${aws_api_gateway_authorizer.this.id}"
 }
 
 resource "aws_api_gateway_resource" "auth" {
@@ -150,7 +179,7 @@ resource "aws_api_gateway_integration" "auth_lambda_get" {
   http_method             = aws_api_gateway_method.auth_proxy_get.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
-  uri                     = var.auth_lambda_invoke_arn
+  uri                     = var.google_auth_lambda_invoke_arn
 }
 
 resource "aws_api_gateway_integration" "auth_lambda_post" {
@@ -159,7 +188,7 @@ resource "aws_api_gateway_integration" "auth_lambda_post" {
   http_method             = aws_api_gateway_method.auth_proxy_post.http_method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
-  uri                     = var.auth_lambda_invoke_arn
+  uri                     = var.google_auth_lambda_invoke_arn
 }
 
 # OPTIONS for auth/{proxy+}
@@ -171,10 +200,10 @@ resource "aws_api_gateway_method" "auth_proxy_options" {
 }
 
 resource "aws_api_gateway_integration" "auth_proxy_options" {
-  rest_api_id = aws_api_gateway_rest_api.this.id
-  resource_id = aws_api_gateway_resource.auth_proxy.id
-  http_method = aws_api_gateway_method.auth_proxy_options.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.this.id
+  resource_id       = aws_api_gateway_resource.auth_proxy.id
+  http_method       = aws_api_gateway_method.auth_proxy_options.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -192,10 +221,10 @@ resource "aws_api_gateway_method_response" "auth_proxy_options_200" {
 }
 
 resource "aws_api_gateway_integration_response" "auth_proxy_options" {
-  rest_api_id = aws_api_gateway_rest_api.this.id
-  resource_id = aws_api_gateway_resource.auth_proxy.id
-  http_method = aws_api_gateway_method.auth_proxy_options.http_method
-  status_code = aws_api_gateway_method_response.auth_proxy_options_200.status_code
+  rest_api_id         = aws_api_gateway_rest_api.this.id
+  resource_id         = aws_api_gateway_resource.auth_proxy.id
+  http_method         = aws_api_gateway_method.auth_proxy_options.http_method
+  status_code         = aws_api_gateway_method_response.auth_proxy_options_200.status_code
   response_parameters = local.cors_headers
 }
 
@@ -215,7 +244,8 @@ resource "aws_api_gateway_method" "series_proxy_get" {
   rest_api_id   = aws_api_gateway_rest_api.this.id
   resource_id   = aws_api_gateway_resource.series_proxy.id
   http_method   = "GET"
-  authorization = "NONE"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.this.id
 }
 
 resource "aws_api_gateway_integration" "catalog_lambda_get" {
@@ -236,10 +266,10 @@ resource "aws_api_gateway_method" "series_proxy_options" {
 }
 
 resource "aws_api_gateway_integration" "series_proxy_options" {
-  rest_api_id = aws_api_gateway_rest_api.this.id
-  resource_id = aws_api_gateway_resource.series_proxy.id
-  http_method = aws_api_gateway_method.series_proxy_options.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.this.id
+  resource_id       = aws_api_gateway_resource.series_proxy.id
+  http_method       = aws_api_gateway_method.series_proxy_options.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -257,10 +287,10 @@ resource "aws_api_gateway_method_response" "series_proxy_options_200" {
 }
 
 resource "aws_api_gateway_integration_response" "series_proxy_options" {
-  rest_api_id = aws_api_gateway_rest_api.this.id
-  resource_id = aws_api_gateway_resource.series_proxy.id
-  http_method = aws_api_gateway_method.series_proxy_options.http_method
-  status_code = aws_api_gateway_method_response.series_proxy_options_200.status_code
+  rest_api_id         = aws_api_gateway_rest_api.this.id
+  resource_id         = aws_api_gateway_resource.series_proxy.id
+  http_method         = aws_api_gateway_method.series_proxy_options.http_method
+  status_code         = aws_api_gateway_method_response.series_proxy_options_200.status_code
   response_parameters = local.cors_headers
 }
 
@@ -280,7 +310,8 @@ resource "aws_api_gateway_method" "library_root_get" {
   rest_api_id   = aws_api_gateway_rest_api.this.id
   resource_id   = aws_api_gateway_resource.library.id
   http_method   = "GET"
-  authorization = "NONE"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.this.id
 }
 
 resource "aws_api_gateway_integration" "library_root_lambda" {
@@ -296,21 +327,24 @@ resource "aws_api_gateway_method" "library_proxy_get" {
   rest_api_id   = aws_api_gateway_rest_api.this.id
   resource_id   = aws_api_gateway_resource.library_proxy.id
   http_method   = "GET"
-  authorization = "NONE"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.this.id
 }
 
 resource "aws_api_gateway_method" "library_proxy_put" {
   rest_api_id   = aws_api_gateway_rest_api.this.id
   resource_id   = aws_api_gateway_resource.library_proxy.id
   http_method   = "PUT"
-  authorization = "NONE"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.this.id
 }
 
 resource "aws_api_gateway_method" "library_proxy_delete" {
   rest_api_id   = aws_api_gateway_rest_api.this.id
   resource_id   = aws_api_gateway_resource.library_proxy.id
   http_method   = "DELETE"
-  authorization = "NONE"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.this.id
 }
 
 resource "aws_api_gateway_integration" "library_lambda_get" {
@@ -349,10 +383,10 @@ resource "aws_api_gateway_method" "library_proxy_options" {
 }
 
 resource "aws_api_gateway_integration" "library_proxy_options" {
-  rest_api_id = aws_api_gateway_rest_api.this.id
-  resource_id = aws_api_gateway_resource.library_proxy.id
-  http_method = aws_api_gateway_method.library_proxy_options.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.this.id
+  resource_id       = aws_api_gateway_resource.library_proxy.id
+  http_method       = aws_api_gateway_method.library_proxy_options.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -370,10 +404,10 @@ resource "aws_api_gateway_method_response" "library_proxy_options_200" {
 }
 
 resource "aws_api_gateway_integration_response" "library_proxy_options" {
-  rest_api_id = aws_api_gateway_rest_api.this.id
-  resource_id = aws_api_gateway_resource.library_proxy.id
-  http_method = aws_api_gateway_method.library_proxy_options.http_method
-  status_code = aws_api_gateway_method_response.library_proxy_options_200.status_code
+  rest_api_id         = aws_api_gateway_rest_api.this.id
+  resource_id         = aws_api_gateway_resource.library_proxy.id
+  http_method         = aws_api_gateway_method.library_proxy_options.http_method
+  status_code         = aws_api_gateway_method_response.library_proxy_options_200.status_code
   response_parameters = local.cors_headers
 }
 
@@ -393,14 +427,16 @@ resource "aws_api_gateway_method" "episodes_proxy_get" {
   rest_api_id   = aws_api_gateway_rest_api.this.id
   resource_id   = aws_api_gateway_resource.episodes_proxy.id
   http_method   = "GET"
-  authorization = "NONE"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.this.id
 }
 
 resource "aws_api_gateway_method" "episodes_proxy_put" {
   rest_api_id   = aws_api_gateway_rest_api.this.id
   resource_id   = aws_api_gateway_resource.episodes_proxy.id
   http_method   = "PUT"
-  authorization = "NONE"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.this.id
 }
 
 resource "aws_api_gateway_integration" "progress_lambda_get" {
@@ -430,10 +466,10 @@ resource "aws_api_gateway_method" "episodes_proxy_options" {
 }
 
 resource "aws_api_gateway_integration" "episodes_proxy_options" {
-  rest_api_id = aws_api_gateway_rest_api.this.id
-  resource_id = aws_api_gateway_resource.episodes_proxy.id
-  http_method = aws_api_gateway_method.episodes_proxy_options.http_method
-  type        = "MOCK"
+  rest_api_id       = aws_api_gateway_rest_api.this.id
+  resource_id       = aws_api_gateway_resource.episodes_proxy.id
+  http_method       = aws_api_gateway_method.episodes_proxy_options.http_method
+  type              = "MOCK"
   request_templates = { "application/json" = "{\"statusCode\": 200}" }
 }
 
@@ -451,10 +487,10 @@ resource "aws_api_gateway_method_response" "episodes_proxy_options_200" {
 }
 
 resource "aws_api_gateway_integration_response" "episodes_proxy_options" {
-  rest_api_id = aws_api_gateway_rest_api.this.id
-  resource_id = aws_api_gateway_resource.episodes_proxy.id
-  http_method = aws_api_gateway_method.episodes_proxy_options.http_method
-  status_code = aws_api_gateway_method_response.episodes_proxy_options_200.status_code
+  rest_api_id         = aws_api_gateway_rest_api.this.id
+  resource_id         = aws_api_gateway_resource.episodes_proxy.id
+  http_method         = aws_api_gateway_method.episodes_proxy_options.http_method
+  status_code         = aws_api_gateway_method_response.episodes_proxy_options_200.status_code
   response_parameters = local.cors_headers
 }
 
@@ -468,7 +504,8 @@ resource "aws_api_gateway_method" "dashboard_get" {
   rest_api_id   = aws_api_gateway_rest_api.this.id
   resource_id   = aws_api_gateway_resource.dashboard.id
   http_method   = "GET"
-  authorization = "NONE"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.this.id
 }
 
 resource "aws_api_gateway_integration" "dashboard_lambda" {
@@ -490,7 +527,8 @@ resource "aws_api_gateway_method" "history_get" {
   rest_api_id   = aws_api_gateway_rest_api.this.id
   resource_id   = aws_api_gateway_resource.history.id
   http_method   = "GET"
-  authorization = "NONE"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.this.id
 }
 
 resource "aws_api_gateway_integration" "history_lambda" {
@@ -512,7 +550,8 @@ resource "aws_api_gateway_method" "calendar_get" {
   rest_api_id   = aws_api_gateway_rest_api.this.id
   resource_id   = aws_api_gateway_resource.calendar.id
   http_method   = "GET"
-  authorization = "NONE"
+  authorization = "CUSTOM"
+  authorizer_id = aws_api_gateway_authorizer.this.id
 }
 
 resource "aws_api_gateway_integration" "calendar_lambda" {
@@ -852,6 +891,8 @@ resource "aws_api_gateway_deployment" "this" {
   rest_api_id = aws_api_gateway_rest_api.this.id
 
   depends_on = [
+    aws_api_gateway_authorizer.this,
+    aws_lambda_permission.authorizer,
     aws_api_gateway_integration.auth_lambda_get,
     aws_api_gateway_integration.auth_lambda_post,
     aws_api_gateway_integration.catalog_lambda_get,
