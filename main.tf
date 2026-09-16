@@ -22,6 +22,17 @@ module "dynamodb" {
   tags       = var.tags
 }
 
+# ---------- SQS (hydrate queue) ----------
+
+module "sqs" {
+  source = "./modules/sqs"
+
+  queue_name                 = "episodic-hydrate"
+  visibility_timeout_seconds = 360
+  max_receive_count          = 3
+  tags                       = var.tags
+}
+
 # ---------- Lambda Functions ----------
 
 locals {
@@ -60,13 +71,15 @@ locals {
       }
     }
     library = {
-      binary      = "crates/library-lambda"
-      zip_name    = "library-lambda"
-      memory_size = 256
-      timeout     = 10
+      binary              = "crates/library-lambda"
+      zip_name            = "library-lambda"
+      memory_size         = 256
+      timeout             = 10
+      sqs_send_queue_arns = [module.sqs.queue_arn]
       env = {
         DYNAMODB_TABLE_NAME                  = module.dynamodb.table_name
         JWT_SECRET                           = var.jwt_secret
+        HYDRATE_QUEUE_URL                    = module.sqs.queue_url
         AWS_LAMBDA_HTTP_IGNORE_STAGE_IN_PATH = "1"
       }
     }
@@ -102,6 +115,18 @@ locals {
         DYNAMODB_TABLE_NAME = module.dynamodb.table_name
       }
     }
+    hydrate-worker = {
+      binary      = "crates/hydrate-worker"
+      zip_name    = "hydrate-worker"
+      memory_size = 512
+      timeout     = 300
+      sqs_consume = true
+      env = {
+        TMDB_API_KEY        = var.tmdb_api_key
+        TMDB_COUNTRY        = "US"
+        DYNAMODB_TABLE_NAME = module.dynamodb.table_name
+      }
+    }
   }
 }
 
@@ -109,13 +134,26 @@ module "lambda" {
   for_each = local.lambdas
   source   = "./modules/lambda"
 
-  function_name      = "episodic-${each.key}"
-  binary_path        = "${path.module}/../episodic-app-backend/target/lambda/${each.value.zip_name}.zip"
-  memory_size        = each.value.memory_size
-  timeout            = each.value.timeout
-  env                = each.value.env
-  dynamodb_table_arn = module.dynamodb.table_arn
-  tags               = var.tags
+  function_name       = "episodic-${each.key}"
+  binary_path         = "${path.module}/../episodic-app-backend/target/lambda/${each.value.zip_name}.zip"
+  memory_size         = each.value.memory_size
+  timeout             = each.value.timeout
+  env                 = each.value.env
+  dynamodb_table_arn  = module.dynamodb.table_arn
+  sqs_send_queue_arns = try(each.value.sqs_send_queue_arns, [])
+  sqs_consume         = try(each.value.sqs_consume, false)
+  tags                = var.tags
+}
+
+resource "aws_lambda_event_source_mapping" "hydrate_worker" {
+  event_source_arn        = module.sqs.queue_arn
+  function_name           = module.lambda["hydrate-worker"].function_name
+  batch_size              = 1
+  function_response_types = ["ReportBatchItemFailures"]
+
+  scaling_config {
+    maximum_concurrency = 5
+  }
 }
 
 # ---------- API Gateway ----------

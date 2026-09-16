@@ -46,6 +46,16 @@ variable "tags" {
   default = {}
 }
 
+variable "sqs_send_queue_arns" {
+  type    = list(string)
+  default = []
+}
+
+variable "sqs_consume" {
+  type    = bool
+  default = false
+}
+
 data "aws_iam_policy_document" "lambda_assume" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -92,6 +102,28 @@ resource "aws_iam_role_policy" "dynamodb_access" {
   name   = "${var.function_name}-dynamodb"
   role   = aws_iam_role.lambda_role.id
   policy = data.aws_iam_policy_document.dynamodb_access[0].json
+}
+
+resource "aws_iam_role_policy" "sqs_send" {
+  count = length(var.sqs_send_queue_arns) > 0 ? 1 : 0
+  name  = "${var.function_name}-sqs-send"
+  role  = aws_iam_role.lambda_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "sqs:SendMessage"
+        Resource = var.sqs_send_queue_arns
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "sqs_consume" {
+  count      = var.sqs_consume ? 1 : 0
+  role       = aws_iam_role.lambda_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaSQSQueueExecutionRole"
 }
 
 resource "aws_lambda_function" "this" {

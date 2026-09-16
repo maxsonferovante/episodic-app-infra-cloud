@@ -1,19 +1,25 @@
 # Episodic — Infrastructure
 
 Terraform for the Episodic backend on AWS: API Gateway, Lambda functions,
-DynamoDB and a scheduled sync job.
+DynamoDB, an SQS hydrate queue and a scheduled refresh job.
 
 ## What it creates
 
 - **API Gateway (REST)** — `/api/v1/*` routes (auth, series, library, episodes,
   dashboard, history, calendar), CORS, and stage-wide throttling
   (60 req/min = 1 req/s, burst 20).
-- **Lambda** — `auth`, `catalog`, `library`, `progress`, `dashboard`, `sync-job`
-  (deployed from the zips built by the backend repo).
+- **Lambda** — `auth`, `catalog`, `library`, `progress`, `dashboard`, `sync-job`,
+  `hydrate-worker` (deployed from the zips built by the backend repo).
 - **DynamoDB** — single table `EpisodicEpisodes` (`PK`/`SK`) with a `GSI1`
   (`GSI1PK`/`GSI1SK`).
-- **EventBridge** — daily rule that invokes the sync job.
-- **IAM** — execution roles and least-privilege DynamoDB access.
+- **SQS** — `episodic-hydrate` queue (SSE, 20s long polling, 360s visibility
+  timeout) with a `episodic-hydrate-dlq` dead-letter queue (maxReceiveCount 3).
+  A Lambda event source mapping consumes it with `ReportBatchItemFailures` and
+  `maximum_concurrency = 5` to protect the TMDB rate limit.
+- **EventBridge** — daily rule that invokes the `sync-job` scheduler, which
+  enqueues hydrate messages for series that need a refresh.
+- **IAM** — execution roles, least-privilege DynamoDB access, `sqs:SendMessage`
+  for the library lambda and SQS consume permissions for the hydrate worker.
 
 ## Requirements
 
