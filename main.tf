@@ -75,6 +75,7 @@ locals {
       zip_name            = "library-lambda"
       memory_size         = 256
       timeout             = 10
+      sqs_send            = true
       sqs_send_queue_arns = [module.sqs.queue_arn]
       env = {
         DYNAMODB_TABLE_NAME                  = module.dynamodb.table_name
@@ -140,6 +141,7 @@ module "lambda" {
   timeout             = each.value.timeout
   env                 = each.value.env
   dynamodb_table_arn  = module.dynamodb.table_arn
+  sqs_send            = try(each.value.sqs_send, false)
   sqs_send_queue_arns = try(each.value.sqs_send_queue_arns, [])
   sqs_consume         = try(each.value.sqs_consume, false)
   tags                = var.tags

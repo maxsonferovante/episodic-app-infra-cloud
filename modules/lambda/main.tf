@@ -46,6 +46,11 @@ variable "tags" {
   default = {}
 }
 
+variable "sqs_send" {
+  type    = bool
+  default = false
+}
+
 variable "sqs_send_queue_arns" {
   type    = list(string)
   default = []
@@ -105,7 +110,7 @@ resource "aws_iam_role_policy" "dynamodb_access" {
 }
 
 resource "aws_iam_role_policy" "sqs_send" {
-  count = length(var.sqs_send_queue_arns) > 0 ? 1 : 0
+  count = var.sqs_send ? 1 : 0
   name  = "${var.function_name}-sqs-send"
   role  = aws_iam_role.lambda_role.id
   policy = jsonencode({
