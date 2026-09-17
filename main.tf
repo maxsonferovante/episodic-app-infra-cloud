@@ -179,9 +179,10 @@ module "api_gateway" {
   progress_lambda_function_name    = module.lambda["progress"].function_name
   dashboard_lambda_function_name   = module.lambda["dashboard"].function_name
 
-  # Rate limit the whole API at 60 requests/minute (1 req/s) with a burst.
-  throttle_rate_limit  = 1
-  throttle_burst_limit = 20
+  # Rate limit the whole API at 300 requests/minute (5 req/s) with a burst
+  # for the app's parallel season/episode fetches and token renewals.
+  throttle_rate_limit  = 5
+  throttle_burst_limit = 50
 
   tags = var.tags
 }

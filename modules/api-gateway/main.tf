@@ -934,9 +934,10 @@ resource "aws_api_gateway_stage" "this" {
   tags          = var.tags
 }
 
-# Stage-wide rate limit applied to every method (the request asked for 60
-# requests per minute = 1 req/s, with a burst allowance for the app's parallel
-# season/episode fetches). Requests over the limit get 429 Too Many Requests.
+# Stage-wide rate limit applied to every method (steady-state plus a burst
+# allowance for the app's parallel season/episode fetches and token
+# renewals — values come from throttle_rate_limit/throttle_burst_limit).
+# Requests over the limit get 429 Too Many Requests.
 resource "aws_api_gateway_method_settings" "throttle" {
   rest_api_id = aws_api_gateway_rest_api.this.id
   stage_name  = aws_api_gateway_stage.this.stage_name
