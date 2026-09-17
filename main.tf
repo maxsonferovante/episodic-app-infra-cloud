@@ -6,6 +6,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -31,6 +35,16 @@ module "sqs" {
   visibility_timeout_seconds = 360
   max_receive_count          = 3
   tags                       = var.tags
+}
+
+# ---------- Pagination cursor key ----------
+# 32 random bytes (base64url, no padding) sealing history page tokens via
+# Fernet-compatible crypto. Born at first apply; a taint/recreate rotates
+# it — in-flight cursors then fail closed and clients restart from page 1.
+# NOTE: random_id is not marked sensitive, so the key is readable in the
+# (local, gitignored) tfstate, like the other secrets.
+resource "random_id" "cursor_fernet_key" {
+  byte_length = 32
 }
 
 # ---------- Lambda Functions ----------
@@ -103,6 +117,7 @@ locals {
       env = {
         DYNAMODB_TABLE_NAME                  = module.dynamodb.table_name
         JWT_SECRET                           = var.jwt_secret
+        CURSOR_FERNET_KEY                    = random_id.cursor_fernet_key.b64_url
         AWS_LAMBDA_HTTP_IGNORE_STAGE_IN_PATH = "1"
       }
     }
