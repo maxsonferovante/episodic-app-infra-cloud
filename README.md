@@ -6,7 +6,7 @@ DynamoDB, an SQS hydrate queue and a scheduled refresh job.
 ## What it creates
 
 - **API Gateway (REST)** — `/api/v1/*` routes (auth, series, library, episodes,
-  dashboard, history, calendar, releases), CORS, and stage-wide throttling
+  history, calendar, releases), CORS, and stage-wide throttling
   (`throttle_rate_limit` = 5 req/s, `throttle_burst_limit` = 50 in `main.tf`).
 - **Lambda** — `auth`, `catalog`, `library`, `progress`, `dashboard`, `sync-job`,
   `hydrate-worker` (deployed from the zips built by the backend repo).
