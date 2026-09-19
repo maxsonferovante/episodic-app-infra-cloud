@@ -6,12 +6,17 @@ DynamoDB, an SQS hydrate queue and a scheduled refresh job.
 ## What it creates
 
 - **API Gateway (REST)** — `/api/v1/*` routes (auth, series, library, episodes,
-  dashboard, history, calendar), CORS, and stage-wide throttling
-  (60 req/min = 1 req/s, burst 20).
+  dashboard, history, calendar, releases), CORS, and stage-wide throttling
+  (`throttle_rate_limit` = 5 req/s, `throttle_burst_limit` = 50 in `main.tf`).
 - **Lambda** — `auth`, `catalog`, `library`, `progress`, `dashboard`, `sync-job`,
   `hydrate-worker` (deployed from the zips built by the backend repo).
-- **DynamoDB** — single table `EpisodicEpisodes` (`PK`/`SK`) with a `GSI1`
-  (`GSI1PK`/`GSI1SK`).
+- **DynamoDB** — single table `EpisodicEpisodes` (`PK`/`SK`) with `GSI1`
+  (`GSI1PK`/`GSI1SK`) and `GSI2`, the air-date index
+  (`GSI2PK = AIR#<YYYY-MM>`, `GSI2SK = <date>#<series>#S#E`) that powers
+  `/api/v1/releases`. Point-in-time recovery is **disabled** (continuous-backup
+  storage cost); take on-demand backups if you need them. Existing `EP#` rows
+  must be backfilled once with `episodic-app-backend/scripts/backfill-air-index.py`
+  after the index is created.
 - **SQS** — `episodic-hydrate` queue (SSE, 20s long polling, 360s visibility
   timeout) with a `episodic-hydrate-dlq` dead-letter queue (maxReceiveCount 3).
   A Lambda event source mapping consumes it with `ReportBatchItemFailures` and
