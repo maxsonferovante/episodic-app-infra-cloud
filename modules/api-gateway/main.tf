@@ -494,29 +494,6 @@ resource "aws_api_gateway_integration_response" "episodes_proxy_options" {
   response_parameters = local.cors_headers
 }
 
-resource "aws_api_gateway_resource" "dashboard" {
-  rest_api_id = aws_api_gateway_rest_api.this.id
-  parent_id   = aws_api_gateway_resource.v1.id
-  path_part   = "dashboard"
-}
-
-resource "aws_api_gateway_method" "dashboard_get" {
-  rest_api_id   = aws_api_gateway_rest_api.this.id
-  resource_id   = aws_api_gateway_resource.dashboard.id
-  http_method   = "GET"
-  authorization = "CUSTOM"
-  authorizer_id = aws_api_gateway_authorizer.this.id
-}
-
-resource "aws_api_gateway_integration" "dashboard_lambda" {
-  rest_api_id             = aws_api_gateway_rest_api.this.id
-  resource_id             = aws_api_gateway_resource.dashboard.id
-  http_method             = aws_api_gateway_method.dashboard_get.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = var.dashboard_lambda_invoke_arn
-}
-
 resource "aws_api_gateway_resource" "history" {
   rest_api_id = aws_api_gateway_rest_api.this.id
   parent_id   = aws_api_gateway_resource.v1.id
@@ -775,51 +752,6 @@ resource "aws_api_gateway_integration_response" "episodes_options" {
   response_parameters = local.cors_headers
 }
 
-# Dashboard OPTIONS
-resource "aws_api_gateway_method" "dashboard_options" {
-  rest_api_id   = aws_api_gateway_rest_api.this.id
-  resource_id   = aws_api_gateway_resource.dashboard.id
-  http_method   = "OPTIONS"
-  authorization = "NONE"
-}
-
-resource "aws_api_gateway_integration" "dashboard_options" {
-  rest_api_id = aws_api_gateway_rest_api.this.id
-  resource_id = aws_api_gateway_resource.dashboard.id
-  http_method = aws_api_gateway_method.dashboard_options.http_method
-  type        = "MOCK"
-
-  request_templates = {
-    "application/json" = "{\"statusCode\": 200}"
-  }
-}
-
-resource "aws_api_gateway_method_response" "dashboard_options_200" {
-  rest_api_id = aws_api_gateway_rest_api.this.id
-  resource_id = aws_api_gateway_resource.dashboard.id
-  http_method = aws_api_gateway_method.dashboard_options.http_method
-  status_code = "200"
-
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = true
-    "method.response.header.Access-Control-Allow-Methods" = true
-    "method.response.header.Access-Control-Allow-Origin"  = true
-  }
-
-  response_models = {
-    "application/json" = "Empty"
-  }
-}
-
-resource "aws_api_gateway_integration_response" "dashboard_options" {
-  rest_api_id = aws_api_gateway_rest_api.this.id
-  resource_id = aws_api_gateway_resource.dashboard.id
-  http_method = aws_api_gateway_method.dashboard_options.http_method
-  status_code = aws_api_gateway_method_response.dashboard_options_200.status_code
-
-  response_parameters = local.cors_headers
-}
-
 # History OPTIONS
 resource "aws_api_gateway_method" "history_options" {
   rest_api_id   = aws_api_gateway_rest_api.this.id
@@ -970,7 +902,6 @@ resource "aws_api_gateway_deployment" "this" {
     aws_api_gateway_integration.library_lambda_delete,
     aws_api_gateway_integration.progress_lambda_get,
     aws_api_gateway_integration.progress_lambda_put,
-    aws_api_gateway_integration.dashboard_lambda,
     aws_api_gateway_integration.history_lambda,
     aws_api_gateway_integration.calendar_lambda,
     aws_api_gateway_integration.releases_lambda,
@@ -978,7 +909,6 @@ resource "aws_api_gateway_deployment" "this" {
     aws_api_gateway_integration.catalog_options,
     aws_api_gateway_integration.library_options,
     aws_api_gateway_integration.episodes_options,
-    aws_api_gateway_integration.dashboard_options,
     aws_api_gateway_integration.history_options,
     aws_api_gateway_integration.calendar_options,
     aws_api_gateway_integration.releases_options,
