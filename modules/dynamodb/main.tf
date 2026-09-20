@@ -60,6 +60,26 @@ resource "aws_dynamodb_table" "this" {
     projection_type = "ALL"
   }
 
+  attribute {
+    name = "GSI3PK"
+    type = "S"
+  }
+
+  attribute {
+    name = "GSI3SK"
+    type = "S"
+  }
+
+  # Library-by-added-date index: GSI3PK = "USR#<uid>",
+  # GSI3SK = "<addedAt>#<seriesId>". Lets `/library` page newest-first with a
+  # keyset cursor instead of scanning the whole user partition.
+  global_secondary_index {
+    name            = "GSI3"
+    hash_key        = "GSI3PK"
+    range_key       = "GSI3SK"
+    projection_type = "ALL"
+  }
+
   # PITR desligado deliberadamente (custo de backup contínuo): sem
   # `point_in_time_recovery` gerenciado, use backups on-demand manuais.
   point_in_time_recovery {

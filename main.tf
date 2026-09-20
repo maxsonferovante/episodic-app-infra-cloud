@@ -95,6 +95,7 @@ locals {
         DYNAMODB_TABLE_NAME                  = module.dynamodb.table_name
         JWT_SECRET                           = var.jwt_secret
         HYDRATE_QUEUE_URL                    = module.sqs.queue_url
+        CURSOR_FERNET_KEY                    = random_id.cursor_fernet_key.b64_url
         AWS_LAMBDA_HTTP_IGNORE_STAGE_IN_PATH = "1"
       }
     }
