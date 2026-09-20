@@ -8,3 +8,8 @@ terraform.tfvars
 # Terraform plan output
 tfplan.bin
 *.tfplan
+
+.repowise
+.claude
+.vscode
+.mcp.json
